@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=3.0, viewport-fit=cover">
+<title>Read To Me</title>
+
+<!-- so it installs like an app -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0B5D4C">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Read To Me">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="icon-192.png">
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.4/tesseract.min.js"></script>
+<style>
+  :root{
+    --bg: #FAF8F2;
+    --ink: #16211C;
+    --ink-soft: #4B564F;
+    --line: #D8D2C2;
+    --accent: #0B5D4C;
+    --accent-ink: #FFFFFF;
+    --accent-soft: #E4EFE9;
+    --danger: #8C2F2F;
+    --danger-soft: #F5E4E2;
+    --highlight: #FFE58A;
+    --radius: 18px;
+    --focus: 4px solid #1D5FD1;
+  }
+  *{ box-sizing: border-box; }
+  html,body{
+    margin:0; padding:0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  body{
+    min-height: 100vh;
+    padding: 20px 16px 48px;
+    display:flex;
+    flex-direction: column;
+    align-items:center;
+  }
+  .wrap{
+    width:100%;
+    max-width: 640px;
+  }
+  header{
+    text-align:center;
+    margin-bottom: 22px;
+  }
+  h1{
+    font-size: clamp(28px, 7vw, 38px);
+    margin: 0 0 6px;
+    letter-spacing: -0.01em;
+  }
+  .sub{
+    font-size: clamp(17px, 4vw, 20px);
+    color: var(--ink-soft);
+    margin: 0;
+  }
+
+  /* Big status / instruction banner */
+  .status{
+    background: var(--accent-soft);
+    border: 2px solid var(--accent);
+    border-radius: var(--radius);
+    padding: 16px 18px;
+    font-size: clamp(18px, 4.6vw, 21px);
+    text-align:center;
+    margin-bottom: 18px;
+    line-height:1.4;
+  }
+
+  textarea{
+    width:100%;
+    min-height: 160px;
+    font-size: clamp(20px, 5vw, 24px);
+    line-height:1.5;
+    padding: 18px;
+    border-radius: var(--radius);
+    border: 3px solid var(--line);
+    background:#fff;
+    color: var(--ink);
+    resize: vertical;
+    font-family: inherit;
+  }
+  textarea:focus{ outline: var(--focus); border-color: var(--accent); }
+
+  /* Reading display */
+  .reading-box{
+    width:100%;
+    min-height: 160px;
+    max-height: 340px;
+    overflow-y:auto;
+    background:#fff;
+    border: 3px solid var(--line);
+    border-radius: var(--radius);
+    padding: 20px;
+    font-size: clamp(22px, 6vw, 30px);
+    line-height:1.6;
+    display:none;
+  }
+  .reading-box span.word{ padding: 0 1px; border-radius:4px; }
+  .reading-box span.current{ background: var(--highlight); }
+
+  .btn-row{
+    display:flex;
+    gap: 14px;
+    margin-top: 16px;
+    flex-wrap: wrap;
+  }
+  button{
+    font-family: inherit;
+    font-weight: 700;
+    cursor:pointer;
+    border-radius: var(--radius);
+    border: none;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap: 10px;
+  }
+  button:focus-visible{ outline: var(--focus); outline-offset: 2px; }
+
+  .btn-primary{
+    flex: 1 1 100%;
+    background: var(--accent);
+    color: var(--accent-ink);
+    font-size: clamp(24px, 6.5vw, 30px);
+    padding: 24px 20px;
+    min-height: 84px;
+  }
+  .btn-primary:active{ transform: scale(0.98); }
+  .btn-primary:disabled{ opacity:0.5; cursor:not-allowed; }
+
+  .btn-secondary{
+    flex: 1 1 auto;
+    background:#fff;
+    color: var(--ink);
+    border: 3px solid var(--line);
+    font-size: clamp(18px, 4.6vw, 21px);
+    padding: 18px 16px;
+    min-height: 66px;
+  }
+  .btn-secondary:active{ transform: scale(0.98); }
+
+  .btn-danger{
+    background: var(--danger-soft);
+    color: var(--danger);
+    border: 3px solid var(--danger);
+  }
+
+  .row-2{ display:flex; gap:14px; width:100%; }
+  .row-2 > button{ flex:1; }
+
+  .speed-panel{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap: 12px;
+    margin-top: 16px;
+    background:#fff;
+    border: 3px solid var(--line);
+    border-radius: var(--radius);
+    padding: 12px 16px;
+  }
+  .speed-panel .label{
+    font-size: clamp(17px, 4vw, 19px);
+    font-weight:700;
+  }
+  .speed-btn{
+    width: 60px; height: 60px;
+    font-size: 30px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    border: 2px solid var(--accent);
+  }
+  .speed-btn:active{ transform: scale(0.95); }
+  .speed-readout{
+    min-width: 90px;
+    text-align:center;
+    font-size: clamp(17px, 4vw, 19px);
+    font-weight:700;
+  }
+
+  .divider{
+    display:flex;
+    align-items:center;
+    gap: 12px;
+    margin: 22px 0;
+    color: var(--ink-soft);
+    font-size: 16px;
+  }
+  .divider::before, .divider::after{
+    content:"";
+    flex:1;
+    height:2px;
+    background: var(--line);
+  }
+
+  .photo-btn{
+    width:100%;
+    background:#fff;
+    border: 3px dashed var(--line);
+    color: var(--ink);
+    font-size: clamp(19px, 4.8vw, 22px);
+    padding: 22px;
+    min-height: 76px;
+  }
+  input[type=file]{ display:none; }
+
+  .ocr-status{
+    text-align:center;
+    font-size: 18px;
+    color: var(--ink-soft);
+    margin-top: 10px;
+    display:none;
+  }
+
+  footer{
+    margin-top: 26px;
+    text-align:center;
+    font-size: 15px;
+    color: var(--ink-soft);
+  }
+
+  /* Large text toggle */
+  .size-toggle{
+    display:flex;
+    justify-content:center;
+    gap: 10px;
+    margin-top: 14px;
+  }
+  .size-toggle button{
+    background:#fff;
+    border: 2px solid var(--line);
+    color: var(--ink);
+    padding: 10px 18px;
+    font-size: 16px;
+  }
+  .size-toggle button.active{
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+  }
+
+  body.large-text .reading-box{ font-size: clamp(26px, 8vw, 36px); }
+  body.large-text textarea{ font-size: clamp(24px, 6vw, 28px); }
+  body.large-text .status, body.large-text .btn-secondary, body.large-text .speed-panel .label, body.large-text .speed-readout{
+    font-size: clamp(20px, 5vw, 24px);
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1 id="titleText">Read To Me</h1>
+    <p class="sub" id="subText">Paste text, take a photo, or type — then press one button to hear it.</p>
+  </header>
+
+  <div class="speed-panel" style="margin-bottom:16px;">
+    <span class="label" id="langLabel">App Language</span>
+    <select id="langSelect" style="flex:1; font-size:17px; padding:10px; border-radius:10px; border:2px solid var(--line); background:#fff; margin-left:10px;">
+      <option value="en">English</option>
+      <option value="es">Español</option>
+      <option value="fr">Français</option>
+      <option value="de">Deutsch</option>
+      <option value="zh">中文</option>
+      <option value="hi">हिन्दी</option>
+    </select>
+  </div>
+
+  <div class="status" id="status">
+    Step 1: Paste or type text below. Or take a photo of anything with text.
+  </div>
+
+  <textarea id="textInput" placeholder="Paste or type text here…" aria-label="Text to read aloud"></textarea>
+
+  <div class="btn-row">
+    <button class="btn-secondary" id="pasteBtn" style="flex:1 1 auto;">📋 <span id="pasteBtnText">Paste from Clipboard</span></button>
+    <button class="btn-secondary" id="clearBtn" style="flex:1 1 auto;">🗑 <span id="clearBtnText">Clear Text</span></button>
+  </div>
+
+  <div class="divider"><span id="orText">or</span></div>
+
+  <button class="photo-btn" id="photoBtn">📷 <span id="photoBtnText">Take or Choose a Photo of Text</span></button>
+  <input type="file" id="photoInput" accept="image/*" capture="environment">
+  <div class="ocr-status" id="ocrStatus">Reading the photo… this can take a moment.</div>
+
+  <div class="reading-box" id="readingBox"></div>
+
+  <button class="btn-primary" id="playBtn" disabled>▶ <span id="playBtnText">Press to Read Aloud</span></button>
+
+  <div class="row-2" id="controlsRow" style="display:none; margin-top:14px;">
+    <button class="btn-secondary" id="pauseBtn">⏸ <span id="pauseBtnText">Pause</span></button>
+    <button class="btn-secondary btn-danger" id="stopBtn">⏹ <span id="stopBtnText">Stop</span></button>
+  </div>
+
+  <div class="speed-panel">
+    <span class="label" id="speedLabel">Speaking Speed</span>
+    <button class="speed-btn" id="slowerBtn" aria-label="Slower">−</button>
+    <span class="speed-readout" id="speedReadout">Normal</span>
+    <button class="speed-btn" id="fasterBtn" aria-label="Faster">+</button>
+  </div>
+
+  <div class="speed-panel">
+    <span class="label" id="pitchLabel">Voice Pitch</span>
+    <button class="speed-btn" id="lowerPitchBtn" aria-label="Lower pitch">−</button>
+    <span class="speed-readout" id="pitchReadout">Normal</span>
+    <button class="speed-btn" id="higherPitchBtn" aria-label="Higher pitch">+</button>
+  </div>
+
+  <div class="speed-panel" id="voicePanel" style="display:none;">
+    <span class="label" id="voiceLabel">Voice</span>
+    <select id="voiceSelect" style="flex:1; font-size:17px; padding:10px; border-radius:10px; border:2px solid var(--line); background:#fff; margin-left:10px;"></select>
+  </div>
+
+  <div class="size-toggle">
+    <span style="font-size:16px; align-self:center; margin-right:6px;" id="sizeLabelText">Screen text size:</span>
+    <button id="sizeNormal" class="active"><span id="sizeNormalText">Normal</span></button>
+    <button id="sizeLarge"><span id="sizeLargeText">Extra Large</span></button>
+  </div>
+
+  <div class="status" id="installBanner" style="display:none; background:#fff; border-color: var(--line); margin-top:22px;"></div>
+  <button class="btn-secondary" id="installBtn" style="display:none; width:100%; margin-top:10px;">⬇ Install App</button>
+
+  <footer>
+    <span id="footerText">Works fully on this device. Nothing you paste, photograph, or type is sent anywhere.</span>
+  </footer>
+</div>
+
+<script>
+(function(){
+  const statusEl = document.getElementById('status');
+  const textInput = document.getElementById('textInput');
+  const readingBox = document.getElementById('readingBox');
+  const playBtn = document.getElementById('playBtn');
+  const pauseBtn = document.getElementById('pauseBtn');
+  const stopBtn = document.getElementById('stopBtn');
+  const controlsRow = document.getElementById('controlsRow');
+  const pasteBtn = document.getElementById('pasteBtn');
+  const clearBtn = document.getElementById('clearBtn');
+  const photoBtn = document.getElementById('photoBtn');
+  const photoInput = document.getElementById('photoInput');
+  const ocrStatus = document.getElementById('ocrStatus');
+  const slowerBtn = document.getElementById('slowerBtn');
+  const fasterBtn = document.getElementById('fasterBtn');
+  const speedReadout = document.getElementById('speedReadout');
+  const sizeNormal = document.getElementById('sizeNormal');
+  const sizeLarge = document.getElementById('sizeLarge');
+
+  const speeds = [
+    {label:'Very Slow', rate:0.6},
+    {label:'Slower', rate:0.8},
+    {label:'Normal', rate:1.0},
+    {label:'Faster', rate:1.2},
+    {label:'Very Fast', rate:1.5}
+  ];
+  let speedIndex = 2;
+
+  const pitches = [
+    {label:'Lowest', value:0.6},
+    {label:'Lower', value:0.8},
+    {label:'Normal', value:1.0},
+    {label:'Higher', value:1.2},
+    {label:'Highest', value:1.5}
+  ];
+  let pitchIndex = 2;
+
+  let selectedVoice = null;
+  const voiceSelect = document.getElementById('voiceSelect');
+  const voicePanel = document.getElementById('voicePanel');
+  const synth = window.speechSynthesis;
+  const speechSupported = !!synth;
+
+  function loadVoices(){
+    const voices = synth.getVoices();
+    if(!voices.length) return;
+    voiceSelect.innerHTML = '';
+    // put English voices first since that's what most people want, but show everything
+    const sorted = [...voices].sort((a,b) => {
+      const aEn = a.lang.startsWith('en') ? 0 : 1;
+      const bEn = b.lang.startsWith('en') ? 0 : 1;
+      if(aEn !== bEn) return aEn - bEn;
+      return a.name.localeCompare(b.name);
+    });
+    sorted.forEach((v, i) => {
+      const opt = document.createElement('option');
+      opt.value = v.name;
+      opt.textContent = v.name + ' (' + v.lang + ')';
+      voiceSelect.appendChild(opt);
+    });
+    // try to default to a natural-sounding local english voice if there is one
+    const defaultVoice = sorted.find(v => v.lang.startsWith('en') && v.localService) || sorted[0];
+    if(defaultVoice){
+      voiceSelect.value = defaultVoice.name;
+      selectedVoice = defaultVoice;
+    }
+    voicePanel.style.display = 'flex';
+  }
+  if(speechSupported){
+    loadVoices();
+    synth.onvoiceschanged = loadVoices; // voices load async on some browsers
+  }
+  voiceSelect.addEventListener('change', () => {
+    const voices = synth.getVoices();
+    selectedVoice = voices.find(v => v.name === voiceSelect.value) || null;
+  });
+
+  let utterance = null;
+  let words = [];
+  let isPaused = false;
+
+  // ui text in each language. tesseract code = which ocr language pack to load,
+  // speech code = hint for picking a matching voice
+  const translations = {
+    en: { tesseract:'eng', speechLang:'en', title:'Read To Me', sub:'Paste text, take a photo, or type — then press one button to hear it.',
+      ready:'Ready. Press the big button below to hear it read aloud.', start:'Step 1: Paste or type text below. Or take a photo of anything with text.',
+      noSpeech:"This browser can't read text aloud. Try opening this page in Safari or Chrome.",
+      placeholder:'Paste or type text here…', pasteBtn:'Paste from Clipboard', clearBtn:'Clear Text', or:'or',
+      photoBtn:'Take or Choose a Photo of Text', ocrReading:'Reading the photo… this can take a moment.',
+      playBtn:'Press to Read Aloud', pause:'Pause', resume:'Resume', stop:'Stop', speedLabel:'Speaking Speed',
+      pitchLabel:'Voice Pitch', voiceLabel:'Voice', sizeLabel:'Screen text size:', sizeNormal:'Normal', sizeLarge:'Extra Large',
+      footer:'Works fully on this device. Nothing you paste, photograph, or type is sent anywhere.',
+      langLabel:'App Language', pasted:'Pasted! Press the big button below to hear it.',
+      clipboardFail:'Could not read the clipboard. Tap inside the text box and paste manually instead.',
+      ocrDone:'Found the text! Press the big button below to hear it.', ocrEmpty:"Couldn't find clear text in that photo. Try again with better lighting, closer up.",
+      ocrError:'Something went wrong reading the photo. Please try again.', reading:'Reading aloud now…',
+      donePlaying:'Done reading. Press the button to hear it again.', playError:'Reading stopped unexpectedly. Press the button to try again.',
+      paused:'Paused.', stopped:'Stopped. Press the button to start again.' },
+    es: { tesseract:'spa', speechLang:'es', title:'Léeme', sub:'Pega texto, toma una foto o escribe — luego pulsa un botón para escucharlo.',
+      ready:'Listo. Pulsa el botón grande para escucharlo.', start:'Paso 1: Pega o escribe texto abajo. O toma una foto de cualquier texto.',
+      noSpeech:'Este navegador no puede leer texto en voz alta. Prueba con Safari o Chrome.',
+      placeholder:'Pega o escribe el texto aquí…', pasteBtn:'Pegar del Portapapeles', clearBtn:'Borrar Texto', or:'o',
+      photoBtn:'Tomar o Elegir una Foto de Texto', ocrReading:'Leyendo la foto… esto puede tardar un momento.',
+      playBtn:'Pulsa para Escuchar', pause:'Pausar', resume:'Continuar', stop:'Detener', speedLabel:'Velocidad de Voz',
+      pitchLabel:'Tono de Voz', voiceLabel:'Voz', sizeLabel:'Tamaño de texto:', sizeNormal:'Normal', sizeLarge:'Extra Grande',
+      footer:'Funciona completamente en este dispositivo. Nada de lo que pegues, fotografíes o escribas se envía a ningún lugar.',
+      langLabel:'Idioma de la App', pasted:'¡Pegado! Pulsa el botón grande para escucharlo.',
+      clipboardFail:'No se pudo leer el portapapeles. Toca dentro del cuadro de texto y pega manualmente.',
+      ocrDone:'¡Texto encontrado! Pulsa el botón grande para escucharlo.', ocrEmpty:'No se encontró texto claro en la foto. Intenta con mejor luz y más de cerca.',
+      ocrError:'Algo salió mal al leer la foto. Inténtalo de nuevo.', reading:'Leyendo en voz alta…',
+      donePlaying:'Lectura terminada. Pulsa el botón para escucharlo de nuevo.', playError:'La lectura se detuvo inesperadamente. Pulsa el botón para intentarlo de nuevo.',
+      paused:'Pausado.', stopped:'Detenido. Pulsa el botón para empezar de nuevo.' },
+    fr: { tesseract:'fra', speechLang:'fr', title:'Lis-Moi', sub:'Collez du texte, prenez une photo, ou tapez — puis appuyez sur un bouton pour l\u2019entendre.',
+      ready:'Prêt. Appuyez sur le grand bouton pour l\u2019entendre.', start:'Étape 1 : Collez ou tapez du texte ci-dessous. Ou prenez une photo de texte.',
+      noSpeech:'Ce navigateur ne peut pas lire le texte à voix haute. Essayez Safari ou Chrome.',
+      placeholder:'Collez ou tapez le texte ici…', pasteBtn:'Coller le Presse-papiers', clearBtn:'Effacer le Texte', or:'ou',
+      photoBtn:'Prendre ou Choisir une Photo de Texte', ocrReading:'Lecture de la photo… cela peut prendre un moment.',
+      playBtn:'Appuyez pour Écouter', pause:'Pause', resume:'Reprendre', stop:'Arrêter', speedLabel:'Vitesse de Parole',
+      pitchLabel:'Ton de Voix', voiceLabel:'Voix', sizeLabel:'Taille du texte :', sizeNormal:'Normal', sizeLarge:'Très Grand',
+      footer:'Fonctionne entièrement sur cet appareil. Rien de ce que vous collez, photographiez ou tapez n\u2019est envoyé nulle part.',
+      langLabel:'Langue de l\u2019App', pasted:'Collé ! Appuyez sur le grand bouton pour l\u2019entendre.',
+      clipboardFail:'Impossible de lire le presse-papiers. Touchez la zone de texte et collez manuellement.',
+      ocrDone:'Texte trouvé ! Appuyez sur le grand bouton pour l\u2019entendre.', ocrEmpty:'Aucun texte clair trouvé dans la photo. Essayez avec plus de lumière et de plus près.',
+      ocrError:'Un problème est survenu lors de la lecture de la photo. Réessayez.', reading:'Lecture en cours…',
+      donePlaying:'Lecture terminée. Appuyez sur le bouton pour l\u2019entendre à nouveau.', playError:'La lecture s\u2019est arrêtée de façon inattendue. Réessayez.',
+      paused:'En pause.', stopped:'Arrêté. Appuyez sur le bouton pour recommencer.' },
+    de: { tesseract:'deu', speechLang:'de', title:'Lies Mir Vor', sub:'Text einfügen, ein Foto machen oder tippen — dann einen Knopf drücken, um es zu hören.',
+      ready:'Bereit. Drücken Sie den großen Knopf, um es zu hören.', start:'Schritt 1: Text unten einfügen oder eintippen. Oder ein Foto von Text machen.',
+      noSpeech:'Dieser Browser kann Text nicht vorlesen. Versuchen Sie es mit Safari oder Chrome.',
+      placeholder:'Text hier einfügen oder eintippen…', pasteBtn:'Aus Zwischenablage Einfügen', clearBtn:'Text Löschen', or:'oder',
+      photoBtn:'Foto von Text Aufnehmen oder Wählen', ocrReading:'Foto wird gelesen… das kann einen Moment dauern.',
+      playBtn:'Zum Vorlesen Drücken', pause:'Pause', resume:'Fortsetzen', stop:'Stopp', speedLabel:'Sprechgeschwindigkeit',
+      pitchLabel:'Stimmhöhe', voiceLabel:'Stimme', sizeLabel:'Textgröße:', sizeNormal:'Normal', sizeLarge:'Extra Groß',
+      footer:'Funktioniert vollständig auf diesem Gerät. Nichts, was Sie einfügen, fotografieren oder eintippen, wird irgendwohin gesendet.',
+      langLabel:'App-Sprache', pasted:'Eingefügt! Drücken Sie den großen Knopf, um es zu hören.',
+      clipboardFail:'Zwischenablage konnte nicht gelesen werden. Tippen Sie ins Textfeld und fügen Sie manuell ein.',
+      ocrDone:'Text gefunden! Drücken Sie den großen Knopf, um es zu hören.', ocrEmpty:'Kein klarer Text im Foto gefunden. Versuchen Sie es mit besserem Licht und näher dran.',
+      ocrError:'Beim Lesen des Fotos ist etwas schiefgelaufen. Bitte erneut versuchen.', reading:'Wird jetzt vorgelesen…',
+      donePlaying:'Vorlesen beendet. Drücken Sie den Knopf, um es erneut zu hören.', playError:'Das Vorlesen wurde unerwartet gestoppt. Bitte erneut versuchen.',
+      paused:'Pausiert.', stopped:'Gestoppt. Drücken Sie den Knopf, um erneut zu beginnen.' },
+    zh: { tesseract:'chi_sim', speechLang:'zh', title:'读给我听', sub:'粘贴文字、拍照或输入文字——然后按一个按钮听它朗读。',
+      ready:'准备好了。按下面的大按钮听朗读。', start:'第一步：在下面粘贴或输入文字。或拍摄任何有文字的照片。',
+      noSpeech:'此浏览器无法朗读文字。请尝试使用 Safari 或 Chrome。',
+      placeholder:'在此粘贴或输入文字…', pasteBtn:'从剪贴板粘贴', clearBtn:'清除文字', or:'或',
+      photoBtn:'拍摄或选择文字照片', ocrReading:'正在读取照片…这可能需要一点时间。',
+      playBtn:'按下朗读', pause:'暂停', resume:'继续', stop:'停止', speedLabel:'朗读速度',
+      pitchLabel:'语调高低', voiceLabel:'声音', sizeLabel:'屏幕文字大小：', sizeNormal:'正常', sizeLarge:'特大',
+      footer:'完全在此设备上运行。您粘贴、拍摄或输入的任何内容都不会发送到任何地方。',
+      langLabel:'应用语言', pasted:'已粘贴！按下面的大按钮听朗读。',
+      clipboardFail:'无法读取剪贴板。请点击文本框内并手动粘贴。',
+      ocrDone:'已找到文字！按下面的大按钮听朗读。', ocrEmpty:'照片中未找到清晰的文字。请尝试更好的光线并靠近一些。',
+      ocrError:'读取照片时出错。请重试。', reading:'正在朗读…',
+      donePlaying:'朗读完成。按按钮再次收听。', playError:'朗读意外停止。请按按钮重试。',
+      paused:'已暂停。', stopped:'已停止。按按钮重新开始。' },
+    hi: { tesseract:'hin', speechLang:'hi', title:'मुझे पढ़ो', sub:'टेक्स्ट पेस्ट करें, फोटो लें, या टाइप करें — फिर सुनने के लिए एक बटन दबाएँ।',
+      ready:'तैयार है। सुनने के लिए नीचे बड़ा बटन दबाएँ।', start:'चरण 1: नीचे टेक्स्ट पेस्ट करें या टाइप करें। या किसी भी टेक्स्ट की फोटो लें।',
+      noSpeech:'यह ब्राउज़र टेक्स्ट को ज़ोर से नहीं पढ़ सकता। Safari या Chrome में खोलने की कोशिश करें।',
+      placeholder:'यहाँ टेक्स्ट पेस्ट करें या टाइप करें…', pasteBtn:'क्लिपबोर्ड से पेस्ट करें', clearBtn:'टेक्स्ट साफ़ करें', or:'या',
+      photoBtn:'टेक्स्ट की फोटो लें या चुनें', ocrReading:'फोटो पढ़ी जा रही है… इसमें थोड़ा समय लग सकता है।',
+      playBtn:'सुनने के लिए दबाएँ', pause:'रोकें', resume:'फिर से शुरू करें', stop:'बंद करें', speedLabel:'बोलने की गति',
+      pitchLabel:'आवाज़ का स्वर', voiceLabel:'आवाज़', sizeLabel:'स्क्रीन टेक्स्ट आकार:', sizeNormal:'सामान्य', sizeLarge:'बहुत बड़ा',
+      footer:'यह पूरी तरह से इसी डिवाइस पर काम करता है। आप जो भी पेस्ट, फोटो या टाइप करते हैं वह कहीं नहीं भेजा जाता।',
+      langLabel:'ऐप की भाषा', pasted:'पेस्ट हो गया! सुनने के लिए बड़ा बटन दबाएँ।',
+      clipboardFail:'क्लिपबोर्ड नहीं पढ़ सका। टेक्स्ट बॉक्स के अंदर टैप करें और मैन्युअल रूप से पेस्ट करें।',
+      ocrDone:'टेक्स्ट मिल गया! सुनने के लिए बड़ा बटन दबाएँ।', ocrEmpty:'फोटो में स्पष्ट टेक्स्ट नहीं मिला। बेहतर रोशनी में और पास से फिर कोशिश करें।',
+      ocrError:'फोटो पढ़ने में कुछ गड़बड़ हुई। कृपया फिर से कोशिश करें।', reading:'अभी ज़ोर से पढ़ा जा रहा है…',
+      donePlaying:'पढ़ना पूरा हुआ। फिर से सुनने के लिए बटन दबाएँ।', playError:'पढ़ना अचानक रुक गया। फिर से कोशिश करने के लिए बटन दबाएँ।',
+      paused:'रोका गया।', stopped:'बंद हो गया। फिर से शुरू करने के लिए बटन दबाएँ।' }
+  };
+  let currentLang = 'en';
+  function t(key){ return translations[currentLang][key] || translations.en[key]; }
+
+  function applyLanguage(){
+    const d = translations[currentLang];
+    document.documentElement.lang = d.speechLang;
+    document.getElementById('titleText').textContent = d.title;
+    document.getElementById('subText').textContent = d.sub;
+    document.getElementById('langLabel').textContent = d.langLabel;
+    textInput.placeholder = d.placeholder;
+    document.getElementById('pasteBtnText').textContent = d.pasteBtn;
+    document.getElementById('clearBtnText').textContent = d.clearBtn;
+    document.getElementById('orText').textContent = d.or;
+    document.getElementById('photoBtnText').textContent = d.photoBtn;
+    ocrStatus.textContent = d.ocrReading;
+    document.getElementById('playBtnText').textContent = d.playBtn;
+    document.getElementById('pauseBtnText').textContent = isPaused ? d.resume : d.pause;
+    document.getElementById('stopBtnText').textContent = d.stop;
+    document.getElementById('speedLabel').textContent = d.speedLabel;
+    document.getElementById('pitchLabel').textContent = d.pitchLabel;
+    document.getElementById('voiceLabel').textContent = d.voiceLabel;
+    document.getElementById('sizeLabelText').textContent = d.sizeLabel;
+    document.getElementById('sizeNormalText').textContent = d.sizeNormal;
+    document.getElementById('sizeLargeText').textContent = d.sizeLarge;
+    document.getElementById('footerText').textContent = d.footer;
+    if(!speechSupported){
+      statusEl.textContent = d.noSpeech;
+    } else {
+      updatePlayAvailability();
+    }
+    // prefer a voice that matches the chosen language, if one's available
+    const voices = synth.getVoices ? synth.getVoices() : [];
+    const match = voices.find(v => v.lang.startsWith(d.speechLang));
+    if(match){
+      selectedVoice = match;
+      if(voiceSelect) voiceSelect.value = match.name;
+    }
+  }
+  document.getElementById('langSelect').addEventListener('change', (e) => {
+    currentLang = e.target.value;
+    applyLanguage();
+  });
+
+  if(!speechSupported){
+    statusEl.textContent = t('noSpeech');
+    playBtn.disabled = true;
+  }
+
+  function updatePlayAvailability(){
+    const hasText = textInput.value.trim().length > 0;
+    playBtn.disabled = !hasText || !speechSupported;
+    statusEl.textContent = hasText ? t('ready') : t('start');
+  }
+  textInput.addEventListener('input', updatePlayAvailability);
+
+  // paste btn
+  pasteBtn.addEventListener('click', async () => {
+    try{
+      const text = await navigator.clipboard.readText();
+      if(text){
+        textInput.value = text;
+        updatePlayAvailability();
+        statusEl.textContent = t('pasted');
+      } else {
+        statusEl.textContent = t('clipboardFail');
+      }
+    } catch(e){
+      statusEl.textContent = t('clipboardFail');
+      textInput.focus();
+    }
+  });
+
+  clearBtn.addEventListener('click', () => {
+    stopReading();
+    textInput.value = '';
+    readingBox.style.display = 'none';
+    readingBox.innerHTML = '';
+    updatePlayAvailability();
+    textInput.focus();
+  });
+
+  // camera stuff
+  photoBtn.addEventListener('click', () => photoInput.click());
+  // cleans up the photo a bit before OCR - grayscale + more contrast helps
+  // tesseract read messier photos (phone pics of mail, labels, etc) way better
+  function prepImageForOCR(file){
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        // cap size so it doesn't take forever on huge phone photos
+        const maxDim = 1800;
+        let w = img.width, h = img.height;
+        if(w > maxDim || h > maxDim){
+          const scale = maxDim / Math.max(w, h);
+          w = Math.round(w * scale);
+          h = Math.round(h * scale);
+        }
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        const imageData = ctx.getImageData(0, 0, w, h);
+        const d = imageData.data;
+        const contrast = 1.3; // mild boost
+        for(let i = 0; i < d.length; i += 4){
+          const gray = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
+          let v = (gray - 128) * contrast + 128;
+          v = Math.max(0, Math.min(255, v));
+          d[i] = d[i+1] = d[i+2] = v;
+        }
+        ctx.putImageData(imageData, 0, 0);
+        canvas.toBlob((blob) => resolve(blob), 'image/png');
+      };
+      img.onerror = () => resolve(file); // fall back to the original if anything goes wrong
+      img.src = URL.createObjectURL(file);
+    });
+  }
+
+  photoInput.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if(!file) return;
+    ocrStatus.style.display = 'block';
+    statusEl.textContent = t('ocrReading');
+    photoBtn.disabled = true;
+    try{
+      const cleanedImage = await prepImageForOCR(file);
+      const result = await Tesseract.recognize(cleanedImage, translations[currentLang].tesseract, {
+        logger: (m) => {
+          if(m.status === 'recognizing text'){
+            ocrStatus.textContent = 'Reading the photo… ' + Math.round(m.progress*100) + '%';
+          }
+        }
+      });
+      const text = (result.data.text || '').trim();
+      if(text){
+        textInput.value = text;
+        updatePlayAvailability();
+        statusEl.textContent = t('ocrDone');
+      } else {
+        statusEl.textContent = t('ocrEmpty');
+      }
+    } catch(err){
+      statusEl.textContent = t('ocrError');
+    } finally {
+      ocrStatus.style.display = 'none';
+      photoBtn.disabled = false;
+      photoInput.value = '';
+    }
+  });
+
+  // splits text into words so I can highlight as it talks
+  function buildReadingBox(text){
+    readingBox.innerHTML = '';
+    words = text.split(/(\s+)/); // keep whitespace tokens for accurate offsets
+    let charOffset = 0;
+    words.forEach((chunk) => {
+      const span = document.createElement('span');
+      if(chunk.trim().length > 0){
+        span.className = 'word';
+        span.dataset.start = charOffset;
+        span.dataset.end = charOffset + chunk.length;
+      }
+      span.textContent = chunk;
+      readingBox.appendChild(span);
+      charOffset += chunk.length;
+    });
+    readingBox.style.display = 'block';
+  }
+
+  function highlightAtCharIndex(charIndex){
+    const spans = readingBox.querySelectorAll('span.word');
+    spans.forEach(s => s.classList.remove('current'));
+    for(const s of spans){
+      const start = parseInt(s.dataset.start, 10);
+      const end = parseInt(s.dataset.end, 10);
+      if(charIndex >= start && charIndex < end){
+        s.classList.add('current');
+        s.scrollIntoView({block:'center', behavior:'smooth'});
+        break;
+      }
+    }
+  }
+
+  function startReading(){
+    if(!speechSupported) return;
+    const text = textInput.value.trim();
+    if(!text) return;
+
+    synth.cancel();
+    buildReadingBox(text);
+
+    utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = translations[currentLang].speechLang;
+    utterance.rate = speeds[speedIndex].rate;
+    utterance.pitch = pitches[pitchIndex].value;
+    if(selectedVoice) utterance.voice = selectedVoice;
+
+    utterance.onboundary = (event) => {
+      if(event.name === 'word' || event.charIndex !== undefined){
+        highlightAtCharIndex(event.charIndex);
+      }
+    };
+    utterance.onend = () => {
+      resetControls();
+      statusEl.textContent = t('donePlaying');
+    };
+    utterance.onerror = () => {
+      resetControls();
+      statusEl.textContent = t('playError');
+    };
+
+    synth.speak(utterance);
+    isPaused = false;
+    playBtn.style.display = 'none';
+    controlsRow.style.display = 'flex';
+    document.getElementById('pauseBtnText').textContent = t('pause');
+    statusEl.textContent = t('reading');
+  }
+
+  function stopReading(){
+    if(speechSupported) synth.cancel();
+    resetControls();
+  }
+
+  function resetControls(){
+    playBtn.style.display = 'flex';
+    controlsRow.style.display = 'none';
+    isPaused = false;
+    const spans = readingBox.querySelectorAll('span.word');
+    spans.forEach(s => s.classList.remove('current'));
+  }
+
+  playBtn.addEventListener('click', startReading);
+
+  pauseBtn.addEventListener('click', () => {
+    if(!speechSupported) return;
+    if(!isPaused){
+      synth.pause();
+      isPaused = true;
+      document.getElementById('pauseBtnText').textContent = t('resume');
+      statusEl.textContent = t('paused');
+    } else {
+      synth.resume();
+      isPaused = false;
+      document.getElementById('pauseBtnText').textContent = t('pause');
+      statusEl.textContent = t('reading');
+    }
+  });
+
+  stopBtn.addEventListener('click', () => {
+    stopReading();
+    statusEl.textContent = t('stopped');
+  });
+
+  // speed buttons
+  function updateSpeedReadout(){
+    speedReadout.textContent = speeds[speedIndex].label;
+    if(utterance && synth.speaking){
+      // cant change rate mid-sentence w web speech api, so just apply next time
+      // (kinda annoying limitation but works fine)
+    }
+  }
+  slowerBtn.addEventListener('click', () => {
+    speedIndex = Math.max(0, speedIndex - 1);
+    updateSpeedReadout();
+  });
+  fasterBtn.addEventListener('click', () => {
+    speedIndex = Math.min(speeds.length - 1, speedIndex + 1);
+    updateSpeedReadout();
+  });
+
+  const lowerPitchBtn = document.getElementById('lowerPitchBtn');
+  const higherPitchBtn = document.getElementById('higherPitchBtn');
+  const pitchReadout = document.getElementById('pitchReadout');
+  function updatePitchReadout(){
+    pitchReadout.textContent = pitches[pitchIndex].label;
+  }
+  lowerPitchBtn.addEventListener('click', () => {
+    pitchIndex = Math.max(0, pitchIndex - 1);
+    updatePitchReadout();
+  });
+  higherPitchBtn.addEventListener('click', () => {
+    pitchIndex = Math.min(pitches.length - 1, pitchIndex + 1);
+    updatePitchReadout();
+  });
+
+  // big text toggle
+  sizeNormal.addEventListener('click', () => {
+    document.body.classList.remove('large-text');
+    sizeNormal.classList.add('active');
+    sizeLarge.classList.remove('active');
+  });
+  sizeLarge.addEventListener('click', () => {
+    document.body.classList.add('large-text');
+    sizeLarge.classList.add('active');
+    sizeNormal.classList.remove('active');
+  });
+
+  applyLanguage();
+
+  // add to home screen stuff
+  const installBanner = document.getElementById('installBanner');
+  const installBtn = document.getElementById('installBtn');
+  const ua = navigator.userAgent;
+  const isIOS = /iPhone|iPad|iPod/.test(ua);
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+
+  let deferredPrompt = null;
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    installBtn.style.display = 'flex';
+    installBanner.style.display = 'block';
+    installBanner.textContent = 'You can install this as an app on your device. Tap "Install App" below — it will then open full-screen from your home screen, just like any other app.';
+  });
+
+  installBtn.addEventListener('click', async () => {
+    if(!deferredPrompt) return;
+    deferredPrompt.prompt();
+    await deferredPrompt.userChoice;
+    deferredPrompt = null;
+    installBtn.style.display = 'none';
+  });
+
+  if(!isStandalone){
+    if(isIOS){
+      installBanner.style.display = 'block';
+      installBanner.innerHTML = 'To make this a real app icon on your Home Screen: tap the <strong>Share</strong> button (square with an arrow, at the bottom of Safari) → scroll down and tap <strong>"Add to Home Screen"</strong> → tap <strong>Add</strong>. It will then open full-screen, just like any other app.';
+    } else if(!('onbeforeinstallprompt' in window)){
+      // firefox etc dont support the install popup
+      installBanner.style.display = 'block';
+      installBanner.textContent = 'To make this a real app icon on your device: open your browser menu and look for "Add to Home Screen" or "Install App".';
+    }
+  }
+})();
+</script>
+</body>
+</html>
